@@ -1,73 +1,80 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import styles from './clinical-patient-summary.scss';
 import { usePatient } from '@openmrs/esm-framework';
 import ClinicalPatientSummaryTabs from './clinical-patient-summary-tabs/clinical-patient-summary-tabs.component';
+import { getClinicalData } from './clincial-patient-summary';
+import { EmptyState } from '@openmrs/esm-patient-common-lib';
 
 export interface ClinicalPatientProps {
   patientUuid: string;
 }
 
+type obs = {
+  name: string;
+  value: string;
+  date: string;
+  encounter: string;
+};
+
 const ClinicalPatientSummary: React.FC<ClinicalPatientProps> = ({ patientUuid }) => {
   const { t } = useTranslation();
-
+  const [obsData, setObsData] = useState([]);
   const { patient } = usePatient(patientUuid);
+
+  const uniqueEncounters = (data) => {
+    const seen = new Set();
+
+    return data.filter((item) => {
+      const duplicate = seen.has(item?.encounter);
+      seen.add(item?.encounter);
+      return !duplicate;
+    });
+  };
+
+  useEffect(() => {
+    getClinicalData().then((response) => {
+      let obsArray: Array<obs> = [];
+      const observations = response['entry']?.filter(
+        (entryItem) => entryItem?.resource?.resourceType === 'Observation',
+      );
+      observations?.map((obsItem) => {
+        obsArray.push({
+          name: obsItem?.resource?.code?.text,
+          value: obsItem?.resource?.valueQuantity?.value + ' ' + obsItem?.resource?.valueQuantity?.unit,
+          date: obsItem?.resource?.effectiveDateTime,
+          encounter: obsItem?.resource?.encounter?.reference,
+        });
+      });
+      setObsData(obsArray);
+    });
+  }, []);
 
   return (
     <div className={styles.bodyContainer}>
       <div className={styles.card}>
-        <div className={styles.sectionTitle}>{t('facilityDetails', 'Facility Details')}</div>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('facilityCode', 'Facility Unique Identifier')}</p>
-            <span className={styles.value}>cybn8909</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('facilityPatientIdentifier', 'Facility Patient Unique Identifier')}</p>
-            <span className={styles.value}>MOH/09099</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('healthWorkerID', 'National Healthworker Unique Identifier')}</p>
-            <span className={styles.value}>UG/989009</span>
-          </div>
-        </div>
         <br></br>
-        <div className={styles.sectionTitle}>{t('vitalsDetails', 'Vitals Details')}</div>
-        <div className={styles.container}>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('visitDate', 'Visit Date')}</p>
-            <span className={styles.value}>15-07-2024</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('bp', 'BP')}</p>
-            <span className={styles.value}>119/80</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('weight', 'Weight')}</p>
-            <span className={styles.value}>67</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('height', 'Height')}</p>
-            <span className={styles.value}>157</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('bmi', 'BMI')}</p>
-            <span className={styles.value}>27.2</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('muac', 'MUAC')}</p>
-            <span className={styles.value}>25</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('pulse', 'Heart rate')}</p>
-            <span className={styles.value}>57</span>
-          </div>
-          <div className={styles.content}>
-            <p className={styles.label}>{t('respRate', 'Respiratian rate')}</p>
-            <span className={styles.value}>57</span>
-          </div>
-        </div>
-        <ClinicalPatientSummaryTabs />
+        {uniqueEncounters(obsData)?.length > 0 ? (
+          uniqueEncounters(obsData)
+            ?.sort((a, b) => b.encounter - a.encounter)
+            ?.map((encounter, index) => (
+              <div key={encounter?.encounter} className={styles.section}>
+                <div className={styles.sectionTitle}>{t(`encounterDetails-${index}`, `Encounter`)}</div>
+                <div key={index} className={styles.container}>
+                  {obsData
+                    ?.filter((obs) => obs?.encounter === encounter?.encounter)
+                    ?.map((obs) => (
+                      <div className={styles.content}>
+                        <p className={styles.label}>{obs?.name}</p>
+                        <span className={styles.value}>{obs?.value}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))
+        ) : (
+          <EmptyState headerTitle={`Patient Information`} displayText={`clinical data`} />
+        )}
       </div>
     </div>
   );
